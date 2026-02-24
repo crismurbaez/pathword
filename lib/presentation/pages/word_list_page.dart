@@ -5,7 +5,7 @@ import '../bloc/word_bloc.dart';
 import '../bloc/word_state.dart';
 
 class WordListPage extends StatelessWidget {
-  const WordListPage({Key? key}) : super(key: key);
+  const WordListPage({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -17,16 +17,16 @@ class WordListPage extends StatelessWidget {
       body: BlocBuilder<WordBloc, WordState>(
         builder: (context, state) {
           if (state is WordInitial) {
-            context.read<WordBloc>().add(LoadWords());
+            context.read<WordBloc>().add(LoadInitialData());
             return const Center(child: CircularProgressIndicator());
           } else if (state is WordLoading) {
             return const Center(child: CircularProgressIndicator());
           } else if (state is WordLoaded) {
             return ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: state.words.length,
+              itemCount: state.allWords.length,
               itemBuilder: (context, index) {
-                final word = state.words[index];
+                final word = state.allWords[index];
                 return Card(
                   margin: const EdgeInsets.only(bottom: 16),
                   child: Padding(
@@ -36,14 +36,24 @@ class WordListPage extends StatelessWidget {
                         SizedBox(
                           height: 150,
                           width: double.infinity,
-                          child: Image.asset(
-                            word.imagePath,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) =>
-                                const Center(
-                                  child: Icon(Icons.broken_image, size: 50),
+                          child: word.imagePath != null
+                              ? Image.asset(
+                                  word.imagePath!,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Center(
+                                        child: Icon(
+                                          Icons.broken_image,
+                                          size: 50,
+                                        ),
+                                      ),
+                                )
+                              : const Center(
+                                  child: Icon(
+                                    Icons.image_not_supported,
+                                    size: 50,
+                                  ),
                                 ),
-                          ),
                         ),
                         const SizedBox(height: 16),
                         Text(
