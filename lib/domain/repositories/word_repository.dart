@@ -10,6 +10,12 @@ abstract class WordRepository {
     bool? isKnown,
     WordDifficulty? difficulty,
   });
+  Future<void> updateWordBoardState({
+    required int id,
+    required bool isOnBoard,
+    double? x,
+    double? y,
+  });
   Future<void> importWords(List<Map<String, String>> words);
 
   // Anchor Group methods

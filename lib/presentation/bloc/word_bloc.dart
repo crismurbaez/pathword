@@ -58,6 +58,15 @@ class ImportWords extends WordEvent {
   List<Object?> get props => [words];
 }
 
+class UpdateWordPosition extends WordEvent {
+  final int wordId;
+  final double x;
+  final double y;
+  const UpdateWordPosition(this.wordId, this.x, this.y);
+  @override
+  List<Object?> get props => [wordId, x, y];
+}
+
 class WordBloc extends Bloc<WordEvent, WordState> {
   final WordRepository repository;
 
@@ -65,17 +74,48 @@ class WordBloc extends Bloc<WordEvent, WordState> {
     on<LoadInitialData>((event, emit) async {
       emit(WordLoading());
       try {
-        final allWords = await repository.getWords();
-        final sidebarWords = allWords.take(20).toList();
-        final boardWords = sidebarWords.take(5).toList();
-        final remainingSidebar = sidebarWords.skip(5).toList();
+        final List<Word> allWords = await repository.getWords();
+
+        // Populate board and sidebar based on persistence
+        final List<Word> boardWords = List<Word>.from(
+          allWords.where((w) => w.isOnBoard),
+        );
+        final List<Word> sidebarWords = List<Word>.from(
+          allWords.where((w) => !w.isOnBoard),
+        );
+
+        // If board is empty (first run or reset), take some defaults and persist them
+        if (boardWords.isEmpty && sidebarWords.isNotEmpty) {
+          final initialSelection = sidebarWords.take(5).toList();
+          for (int i = 0; i < initialSelection.length; i++) {
+            final word = initialSelection[i];
+            final defaultX = 100.0 + (i * 200) % 600;
+            final defaultY = 100.0 + (i * 150) % 400;
+
+            await repository.updateWordBoardState(
+              id: word.id!,
+              isOnBoard: true,
+              x: defaultX,
+              y: defaultY,
+            );
+
+            final updatedWord = word.copyWith(
+              isOnBoard: true,
+              x: defaultX,
+              y: defaultY,
+            );
+            boardWords.add(updatedWord);
+            sidebarWords.removeWhere((w) => w.id == word.id);
+          }
+        }
+
         final anchorGroups = await repository.getAnchorGroups();
 
         emit(
           WordLoaded(
             allWords: allWords,
             boardWords: boardWords,
-            sidebarWords: remainingSidebar,
+            sidebarWords: sidebarWords,
             anchorGroups: anchorGroups,
           ),
         );
@@ -100,37 +140,94 @@ class WordBloc extends Bloc<WordEvent, WordState> {
       }
     });
 
-    on<MoveWordToBoard>((event, emit) {
+    on<MoveWordToBoard>((event, emit) async {
       final currentState = state;
       if (currentState is WordLoaded) {
-        if (currentState.boardWords.length >= 12) return;
+        if (currentState.boardWords.length >= 24) return; // Allow more words
         if (currentState.boardWords.any((w) => w.id == event.word.id)) return;
 
-        final newBoard = List<Word>.from(currentState.boardWords)
-          ..add(event.word);
-        final newSidebar = List<Word>.from(currentState.sidebarWords)
-          ..removeWhere((w) => w.id == event.word.id);
+        try {
+          // Persist to DB
+          await repository.updateWordBoardState(
+            id: event.word.id!,
+            isOnBoard: true,
+            x: event.word.x,
+            y: event.word.y,
+          );
 
-        emit(
-          currentState.copyWith(boardWords: newBoard, sidebarWords: newSidebar),
-        );
+          final newWord = event.word.copyWith(isOnBoard: true);
+          final newBoard = List<Word>.from(currentState.boardWords)
+            ..add(newWord);
+          final newSidebar = List<Word>.from(currentState.sidebarWords)
+            ..removeWhere((w) => w.id == event.word.id);
+
+          emit(
+            currentState.copyWith(
+              boardWords: newBoard,
+              sidebarWords: newSidebar,
+            ),
+          );
+        } catch (e) {
+          emit(WordError(e.toString()));
+        }
       }
     });
 
-    on<RemoveWordFromBoard>((event, emit) {
+    on<RemoveWordFromBoard>((event, emit) async {
       final currentState = state;
       if (currentState is WordLoaded) {
-        final newBoard = List<Word>.from(currentState.boardWords)
-          ..removeWhere((w) => w.id == event.word.id);
-        final newSidebar = List<Word>.from(currentState.sidebarWords);
-        if (!newSidebar.any((w) => w.id == event.word.id) &&
-            newSidebar.length < 20) {
-          newSidebar.add(event.word);
-        }
+        try {
+          // Persist to DB
+          await repository.updateWordBoardState(
+            id: event.word.id!,
+            isOnBoard: false,
+          );
 
-        emit(
-          currentState.copyWith(boardWords: newBoard, sidebarWords: newSidebar),
-        );
+          final newBoard = List<Word>.from(currentState.boardWords)
+            ..removeWhere((w) => w.id == event.word.id);
+          final newSidebar = List<Word>.from(currentState.sidebarWords);
+
+          final removedWord = event.word.copyWith(isOnBoard: false);
+          if (!newSidebar.any((w) => w.id == event.word.id)) {
+            newSidebar.add(removedWord);
+          }
+
+          emit(
+            currentState.copyWith(
+              boardWords: newBoard,
+              sidebarWords: newSidebar,
+            ),
+          );
+        } catch (e) {
+          emit(WordError(e.toString()));
+        }
+      }
+    });
+
+    on<UpdateWordPosition>((event, emit) async {
+      final currentState = state;
+      if (currentState is WordLoaded) {
+        try {
+          await repository.updateWordBoardState(
+            id: event.wordId,
+            isOnBoard: true,
+            x: event.x,
+            y: event.y,
+          );
+          // We don't necessarily need to emit a new state here if the UI
+          // is already managing the local position for smoothness.
+          // But we update the internal list to keep it in sync.
+          final newBoard = currentState.boardWords.map((w) {
+            if (w.id == event.wordId) {
+              return w.copyWith(x: event.x, y: event.y);
+            }
+            return w;
+          }).toList();
+
+          emit(currentState.copyWith(boardWords: newBoard));
+        } catch (e) {
+          // Silently handle position update errors or log them
+        }
       }
     });
 

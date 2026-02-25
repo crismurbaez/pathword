@@ -51,6 +51,21 @@ class WordRepositoryImpl implements WordRepository {
   }
 
   @override
+  Future<void> updateWordBoardState({
+    required int id,
+    required bool isOnBoard,
+    double? x,
+    double? y,
+  }) async {
+    await localDataSource.updateWordBoardState(
+      id,
+      isOnBoard: isOnBoard,
+      x: x,
+      y: y,
+    );
+  }
+
+  @override
   Future<void> importWords(List<Map<String, String>> words) async {
     for (var wordMap in words) {
       await localDataSource.insertWord(wordMap);

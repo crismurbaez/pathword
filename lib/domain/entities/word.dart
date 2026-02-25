@@ -9,6 +9,9 @@ class Word extends Equatable {
   final List<String> translations;
   final bool isKnown;
   final WordDifficulty difficulty;
+  final bool isOnBoard;
+  final double x;
+  final double y;
 
   const Word({
     this.id,
@@ -17,6 +20,9 @@ class Word extends Equatable {
     required this.translations,
     this.isKnown = false,
     this.difficulty = WordDifficulty.medium,
+    this.isOnBoard = false,
+    this.x = 0,
+    this.y = 0,
   });
 
   @override
@@ -27,6 +33,9 @@ class Word extends Equatable {
     translations,
     isKnown,
     difficulty,
+    isOnBoard,
+    x,
+    y,
   ];
 
   Word copyWith({
@@ -36,6 +45,9 @@ class Word extends Equatable {
     List<String>? translations,
     bool? isKnown,
     WordDifficulty? difficulty,
+    bool? isOnBoard,
+    double? x,
+    double? y,
   }) {
     return Word(
       id: id ?? this.id,
@@ -44,6 +56,9 @@ class Word extends Equatable {
       translations: translations ?? this.translations,
       isKnown: isKnown ?? this.isKnown,
       difficulty: difficulty ?? this.difficulty,
+      isOnBoard: isOnBoard ?? this.isOnBoard,
+      x: x ?? this.x,
+      y: y ?? this.y,
     );
   }
 }

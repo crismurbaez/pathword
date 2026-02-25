@@ -1,5 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import '../models/word_model.dart';
 
 class WordLocalDataSource {
@@ -12,12 +15,36 @@ class WordLocalDataSource {
   }
 
   Future<Database> _initDB() async {
-    String path = join(await getDatabasesPath(), 'pathword.db');
-    return await openDatabase(
+    String dbDirectory;
+
+    if (kIsWeb) {
+      // For web, sqflite_common_ffi_web manages the virtual path.
+      return await databaseFactory.openDatabase(
+        'pathword.db',
+        options: OpenDatabaseOptions(
+          version: 5,
+          onCreate: _onCreate,
+          onUpgrade: _onUpgrade,
+        ),
+      );
+    } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      // Desktop: Support directory is more stable and private than Documents.
+      final directory = await getApplicationSupportDirectory();
+      dbDirectory = directory.path;
+    } else {
+      // Mobile: Documents directory is standard for user data persistence.
+      final directory = await getApplicationDocumentsDirectory();
+      dbDirectory = directory.path;
+    }
+
+    String path = join(dbDirectory, 'pathword.db');
+    return await databaseFactory.openDatabase(
       path,
-      version: 3,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
+      options: OpenDatabaseOptions(
+        version: 5,
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+      ),
     );
   }
 
@@ -34,7 +61,6 @@ class WordLocalDataSource {
       await db.execute(
         'ALTER TABLE words ADD COLUMN difficulty INTEGER DEFAULT 1',
       );
-      // image_path is already TEXT, we just need to ensure we can handle NULLs in logic.
 
       await db.execute('''
         CREATE TABLE anchor_groups (
@@ -54,19 +80,45 @@ class WordLocalDataSource {
         )
       ''');
     }
+
+    if (oldVersion < 5) {
+      // Migrate to v5: Add board state persistence with defensive checks
+      final tableInfo = await db.rawQuery('PRAGMA table_info(words)');
+      final columnNames = tableInfo.map((c) => c['name'] as String).toList();
+
+      if (!columnNames.contains('is_on_board')) {
+        await db.execute(
+          'ALTER TABLE words ADD COLUMN is_on_board INTEGER DEFAULT 0',
+        );
+      }
+      if (!columnNames.contains('x')) {
+        await db.execute('ALTER TABLE words ADD COLUMN x REAL DEFAULT 0');
+      }
+      if (!columnNames.contains('y')) {
+        await db.execute('ALTER TABLE words ADD COLUMN y REAL DEFAULT 0');
+      }
+    }
   }
 
   Future _onCreate(Database db, int version) async {
+    if (kDebugMode) {
+      print(
+        'DB: _onCreate called (New Database instance created) - version $version',
+      );
+    }
     await db.execute('''
       CREATE TABLE words (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         english TEXT NOT NULL,
         image_path TEXT,
         is_known INTEGER DEFAULT 0,
-        difficulty INTEGER DEFAULT 1
+        difficulty INTEGER DEFAULT 1,
+        is_on_board INTEGER DEFAULT 0,
+        x REAL DEFAULT 0,
+        y REAL DEFAULT 0
       )
     ''');
-
+    // ... translations, anchor_groups, word_anchor_links same as before
     await db.execute('''
       CREATE TABLE translations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,6 +150,12 @@ class WordLocalDataSource {
   }
 
   Future _seedData(Database db) async {
+    // SECURITY GUARD: Only seed if database is empty
+    final count = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM words'),
+    );
+    if (count != null && count > 0) return;
+
     final List<Map<String, dynamic>> wordsToSeed = [
       {
         'english': 'sock',
@@ -185,6 +243,33 @@ class WordLocalDataSource {
     }
   }
 
+  Future<void> updateWordBoardState(
+    int id, {
+    required bool isOnBoard,
+    double? x,
+    double? y,
+  }) async {
+    final db = await database;
+    final Map<String, dynamic> values = {'is_on_board': isOnBoard ? 1 : 0};
+    if (x != null) values['x'] = x;
+    if (y != null) values['y'] = y;
+
+    if (kDebugMode) {
+      print('DB: Updating Word $id - isOnBoard: $isOnBoard, x: $x, y: $y');
+    }
+
+    final result = await db.update(
+      'words',
+      values,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (kDebugMode) {
+      print('DB: Update result: $result row(s) updated');
+    }
+  }
+
   Future<void> insertWord(Map<String, String> wordData) async {
     final db = await database;
     await db.transaction((txn) async {
@@ -219,7 +304,14 @@ class WordLocalDataSource {
       final translations = translationMaps
           .map((t) => t['spanish'] as String)
           .toList();
-      words.add(WordModel.fromMap(wordMap, translations));
+
+      final word = WordModel.fromMap(wordMap, translations);
+      if (kDebugMode) {
+        print(
+          'DB: Loaded Word ${word.english} (${word.id}) - isOnBoard: ${word.isOnBoard}, x: ${word.x}, y: ${word.y}',
+        );
+      }
+      words.add(word);
     }
     return words;
   }

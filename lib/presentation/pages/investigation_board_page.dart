@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/word_bloc.dart';
@@ -78,11 +79,8 @@ class _InvestigationBoardPageState extends State<InvestigationBoardPage> {
                 children: [
                   // Background
                   Positioned.fill(
-                    child: Image.asset(
-                      'assets/images_ui/backgrounds/backgroung_case_board.webp',
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          Container(color: Colors.brown[100]),
+                    child: Container(
+                      color: Colors.brown[100], // Simple board background
                     ),
                   ),
 
@@ -120,7 +118,12 @@ class _InvestigationBoardPageState extends State<InvestigationBoardPage> {
                         });
 
                         context.read<WordBloc>().add(
-                          MoveWordToBoard(details.data),
+                          MoveWordToBoard(
+                            details.data.copyWith(
+                              x: localOffset.dx,
+                              y: localOffset.dy,
+                            ),
+                          ),
                         );
 
                         if (_isSidebarOpen) {
@@ -211,13 +214,25 @@ class _InvestigationBoardPageState extends State<InvestigationBoardPage> {
   List<Widget> _buildBoardWordCards(BuildContext context, List<Word> words) {
     return List.generate(words.length, (index) {
       final word = words[index];
-      // Initial position if not set
+
+      // Initialize position from entity if not already in local state
       if (!_wordPositions.containsKey(word.id!)) {
-        final defaultOffset = Offset(
-          100.0 + (index * 200) % 600,
-          100.0 + (index * 150) % 400,
-        );
-        _wordPositions[word.id!] = defaultOffset;
+        if (word.isOnBoard) {
+          // Use saved position
+          _wordPositions[word.id!] = Offset(word.x, word.y);
+          if (kDebugMode) {
+            print(
+              'UI: Initializing Word ${word.english} at (${word.x}, ${word.y})',
+            );
+          }
+        } else {
+          // Calculate default if none saved (should rarely happen now)
+          final defaultOffset = Offset(
+            100.0 + (index * 200) % 600,
+            100.0 + (index * 150) % 400,
+          );
+          _wordPositions[word.id!] = defaultOffset;
+        }
       }
 
       final position = _wordPositions[word.id!]!;
@@ -239,6 +254,10 @@ class _InvestigationBoardPageState extends State<InvestigationBoardPage> {
             setState(() {
               _wordPositions[word.id!] = localOffset;
             });
+            // Persist the new position
+            context.read<WordBloc>().add(
+              UpdateWordPosition(word.id!, localOffset.dx, localOffset.dy),
+            );
           },
         ),
       );
@@ -526,40 +545,55 @@ class DraggableWordCard extends StatelessWidget {
       child: Container(
         width: 150,
         padding: const EdgeInsets.all(8.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              word.english.toUpperCase(),
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.primary,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          image: const DecorationImage(
+            image: AssetImage(
+              'assets/images_ui/backgrounds/background_case_board.webp',
+            ),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          padding: const EdgeInsets.all(4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                word.english.toUpperCase(),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            if (word.imagePath != null)
-              Image.asset(
-                word.imagePath!,
-                height: 80,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Icon(Icons.image),
-              )
-            else
-              const Icon(Icons.image_not_supported, size: 80),
-            const Divider(),
-            Text(
-              word.translations.first,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            IconButton(
-              icon: const Icon(Icons.delete, size: 16),
-              onPressed: () {
-                // The parent state will clean up on rebuild if we trigger remove
-                context.read<WordBloc>().add(RemoveWordFromBoard(word));
-              },
-            ),
-          ],
+              const SizedBox(height: 8),
+              if (word.imagePath != null)
+                Image.asset(
+                  word.imagePath!,
+                  height: 80,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.image),
+                )
+              else
+                const Icon(Icons.image_not_supported, size: 80),
+              const Divider(),
+              Text(
+                word.translations.first,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              IconButton(
+                icon: const Icon(Icons.delete, size: 16),
+                onPressed: () {
+                  context.read<WordBloc>().add(RemoveWordFromBoard(word));
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

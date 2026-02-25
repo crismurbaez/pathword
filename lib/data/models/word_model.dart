@@ -8,6 +8,9 @@ class WordModel extends Word {
     required super.translations,
     super.isKnown = false,
     super.difficulty = WordDifficulty.medium,
+    super.isOnBoard = false,
+    super.x = 0,
+    super.y = 0,
   });
 
   factory WordModel.fromMap(
@@ -21,6 +24,9 @@ class WordModel extends Word {
       translations: translations,
       isKnown: (map['is_known'] as int? ?? 0) == 1,
       difficulty: _difficultyFromInt(map['difficulty'] as int?),
+      isOnBoard: (map['is_on_board'] as int? ?? 0) == 1,
+      x: (map['x'] as num? ?? 0).toDouble(),
+      y: (map['y'] as num? ?? 0).toDouble(),
     );
   }
 
@@ -31,7 +37,35 @@ class WordModel extends Word {
       'image_path': imagePath,
       'is_known': isKnown ? 1 : 0,
       'difficulty': _difficultyToInt(difficulty),
+      'is_on_board': isOnBoard ? 1 : 0,
+      'x': x,
+      'y': y,
     };
+  }
+
+  @override
+  WordModel copyWith({
+    int? id,
+    String? english,
+    String? imagePath,
+    List<String>? translations,
+    bool? isKnown,
+    WordDifficulty? difficulty,
+    bool? isOnBoard,
+    double? x,
+    double? y,
+  }) {
+    return WordModel(
+      id: id ?? this.id,
+      english: english ?? this.english,
+      imagePath: imagePath ?? this.imagePath,
+      translations: translations ?? this.translations,
+      isKnown: isKnown ?? this.isKnown,
+      difficulty: difficulty ?? this.difficulty,
+      isOnBoard: isOnBoard ?? this.isOnBoard,
+      x: x ?? this.x,
+      y: y ?? this.y,
+    );
   }
 
   static WordDifficulty _difficultyFromInt(int? value) {
